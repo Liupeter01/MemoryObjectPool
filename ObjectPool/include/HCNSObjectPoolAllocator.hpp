@@ -24,9 +24,9 @@ void operator delete[](void* _ptr);
 #pragma pack(4)
 struct NodeDescriptor
 {
-		  NodeDescriptor* pNext;						//next Node pointer
-		  uint32_t m_ref;								//reference counter
-		  bool m_status;							    //is this node still exist in memory?
+		  NodeDescriptor* _nextNode;						//next Node pointer
+		  uint32_t 		  _nodeRefCounter;					//reference counter
+		  bool nodeStatus;							        //is this node still exist in memory?
 };
 #pragma pack(pop)
 
@@ -49,11 +49,12 @@ private:
 
 		  uint32_t _blockTotalSize = sizeof(NodeDescriptor) + sizeof(_Tp); 	//The total size of sizeof(NodeDescriptor) + sizeof(_Tp)
           uint32_t _objectpoolTotalSize = 0;
+		  
+		  void* 			_objectPoolMemBase;				    			//The base address of the whole objectpool
+		  NodeDescriptor*   _nodeHeader = nullptr;							//The pointer points to the head of the NodeDescriptor
 
-		  NodeDescriptor* 	m_pHead;						//the head of the node
-		  void* 			m_pBuffer;			  			//the head of memory
-		  bool 				m_initStatus;					//objectPool init status
-		  std::mutex 		m_mutex;						//the mutex
+		  bool 				_objectPoolInitStatus;							//objectPool init status
+		  std::mutex 		m_mutex;										//the mutex
 };
 
 template<typename _Tp,std::size_t _objectAmount>
@@ -65,7 +66,7 @@ HCNSObjectPoolAllocator<_Tp,_objectAmount>::HCNSObjectPoolAllocator()
 template<typename _Tp,std::size_t _objectAmount>
 HCNSObjectPoolAllocator<_Tp,_objectAmount>::~HCNSObjectPoolAllocator()
 {
-		  ::delete[]this->m_pBuffer;
+		  ::delete[]this->_objectPoolMemBase;
 }
 
 
@@ -81,20 +82,20 @@ void HCNSObjectPoolAllocator<_Tp,_objectAmount>::initObjectPool()
 	this->_objectpoolTotalSize = _objectAmount * this->_blockTotalSize;
 
 	//calculate and allocate memory size by using memory pool
-	this->m_pBuffer = ::new char[this->_objectpoolTotalSize];
+	this->_objectPoolMemBase = ::new char[this->_objectpoolTotalSize];
 
 	//do the data type cast
-	this->m_pHead = reinterpret_cast<NodeDescriptor*>(this->m_pBuffer);
-	this->m_pHead->m_ref = 0;
-	this->m_pHead->pNext = nullptr;
-	this->m_pHead->m_status = true;;
+	this->_nodeHeader = reinterpret_cast<NodeDescriptor*>(this->_objectPoolMemBase);
+	this->_nodeHeader->_nodeRefCounter = 0;
+	this->_nodeHeader->_nextNode = nullptr;
+	this->_nodeHeader->nodeStatus = true;
 
-	NodeDescriptor* prev = this->m_pHead;
-	NodeDescriptor* pnext = reinterpret_cast<NodeDescriptor*>(
-			reinterpret_cast<char*>(this->m_pBuffer) + this->_blockTotalSize
+	NodeDescriptor* prev = this->_nodeHeader;
+	NodeDescriptor* _nextNode = reinterpret_cast<NodeDescriptor*>(
+			reinterpret_cast<char*>(this->_objectPoolMemBase) + this->_blockTotalSize
 			);
 	NodeDescriptor* pend = reinterpret_cast<NodeDescriptor*>(
-			reinterpret_cast<char*>(this->m_pBuffer) + this->_objectpoolTotalSize
+			reinterpret_cast<char*>(this->_objectPoolMemBase) + this->_objectpoolTotalSize
 			);
 
 	/*-----------------------------------------------------------------------------------*
@@ -112,14 +113,16 @@ void HCNSObjectPoolAllocator<_Tp,_objectAmount>::initObjectPool()
 		*/
 
 		/* traveral the pool and setup linklist connection!*/
-	for (; pnext < pend; pnext = reinterpret_cast<NodeDescriptor*>(reinterpret_cast<char*>(pnext) + this->_blockTotalSize)){
-		pnext->m_ref = 0;
-		pnext->m_status = true;
-		pnext->pNext = nullptr;
+	for (; _nextNode < pend; _nextNode = reinterpret_cast<NodeDescriptor*>(reinterpret_cast<char*>(_nextNode) + this->_blockTotalSize)){
+		_nextNode->_nodeRefCounter = 0;
+		_nextNode->nodeStatus = true;
+		_nextNode->_nextNode = nullptr;
 
-		prev->pNext = pnext;		//get next block
-		prev = pnext;
+		prev->_nextNode = _nextNode;		//get next block
+		prev = _nextNode;
 	}
+	
+	this->_objectPoolInitStatus = true;
 }
 /*------------------------------------------------------------------------------------------------------
 * alloc objects' memory according to it's size
@@ -135,7 +138,7 @@ _Tp* HCNSObjectPoolAllocator<_Tp,_objectAmount>::allocObjectMemory(size_t _size)
 		  /*
 		  * if pool hasn't been inited and allocated with memory
 		  */
-		  if (!this->m_initStatus || this->m_pBuffer== nullptr) {
+		  if (!this->_objectPoolInitStatus || this->_objectPoolMemBase == nullptr) {
 					this->initObjectPool();
 		  }
 
@@ -155,18 +158,18 @@ _Tp* HCNSObjectPoolAllocator<_Tp,_objectAmount>::allocObjectMemory(size_t _size)
 							  ::new char[this->_blockTotalSize]
 							  );
 
-					pAdd->m_ref = 1;
-					pAdd->m_status = false;
-					pAdd->pNext = nullptr;
+					pAdd->_nodeRefCounter = 1;
+					pAdd->nodeStatus = false;
+					pAdd->_nextNode = nullptr;
 
 					pAllocMem = pAdd;								  //
 
 		  }
 		  else {
 					std::lock_guard<std::mutex> _lckg(this->m_mutex);
-					pAllocMem = this->m_pHead;										  //get empty memory block
-					this->m_pHead = this->m_pHead->pNext;	  //move header to the next memory block
-					pAllocMem->m_ref = 1;											  //set this memory region reference time
+					pAllocMem = this->_nodeHeader;										  //get empty memory block
+					this->_nodeHeader = this->_nodeHeader->_nextNode;	  //move header to the next memory block
+					pAllocMem->_nodeRefCounter = 1;											  //set this memory region reference time
 		  }
 		  /* !!! jump the memoryblock scale !!!*/
 		  return reinterpret_cast<_Tp*>(++pAllocMem);
@@ -189,14 +192,14 @@ void HCNSObjectPoolAllocator<_Tp,_objectAmount>::deallocObjectMemory(_Tp* _ptr)
 		  * is the memory block inside the object pool?
 		  * if so, recycle this memory block(just like insert into a linklist from the head)
 		  */
-		  if (_pMemInfo->m_status) {
+		  if (_pMemInfo->nodeStatus) {
 					/* see is there any other references to this object , the number should lower than 2*/
-					if ((--_pMemInfo->m_ref)) {				// reference still exist, memory pool can not recycle this memory block
+					if ((--_pMemInfo->_nodeRefCounter)) {				// reference still exist, memory pool can not recycle this memory block
 							  return;
 					}
 					std::lock_guard<std::mutex> _lckg(this->m_mutex);
-					_pMemInfo->pNext = this->m_pHead;
-					this->m_pHead = _pMemInfo;
+					_pMemInfo->_nextNode = this->_nodeHeader;
+					this->_nodeHeader = _pMemInfo;
 		  }
 		  else { /*outside memory pool*/
 					::delete[]_pMemInfo;
@@ -204,13 +207,13 @@ void HCNSObjectPoolAllocator<_Tp,_objectAmount>::deallocObjectMemory(_Tp* _ptr)
 }
 
 /*------------------------------------------------------------------------------------------------------
-* get unambigous m_pHead value (meanwhile, mutex lock should be activated )
+* get unambigous _nodeHeader value (meanwhile, mutex lock should be activated )
 * @function:  NodeDescriptor* getUnAmbigousHeaderValue()
 *------------------------------------------------------------------------------------------------------*/
 template<typename _Tp,std::size_t _objectAmount>
 NodeDescriptor* HCNSObjectPoolAllocator<_Tp,_objectAmount>::getUnAmbigousHeaderValue()
 {
 	std::lock_guard<std::mutex> _lckg(this->m_mutex);
-	return this->m_pHead;
+	return this->_nodeHeader;
 }
 #endif
