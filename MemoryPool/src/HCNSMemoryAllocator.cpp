@@ -1,6 +1,29 @@
 #include<HCNSMemoryAllocator.hpp>
 
 /*------------------------------------------------------------------------------------------------------
+* searching in the array in order to find the mapping index
+* @function: uint32_t *findMappingIndex(const size_t _size)
+* @param : [IN]size_t _size
+* @retvalue: int
+*------------------------------------------------------------------------------------------------------*/
+inline int MemoryAllocator::findMappingIndex(const size_t _size)
+{
+        auto _result =  std::find_if(
+                this->_poolSizeArray,
+                this->_poolSizeArray + POOL_MAXINUM_SIZE,
+                [_size](uint32_t num){
+                        return ((_size <= num));
+                }
+        );
+        if(_result != this->_poolSizeArray + POOL_MAXINUM_SIZE){
+                return _result - this->_poolSizeArray;
+        }
+        else{
+                return -1;
+        }
+}
+
+/*------------------------------------------------------------------------------------------------------
 * Alloc memory for the memory pool(using system call command ::malloc)
 * @function: void * allocPool(size_t _size)
 * @param :  [IN] size_t _size
@@ -14,16 +37,9 @@ void * MemoryAllocator::allocPool(size_t _size)
             }
         
             /* access to the specific memory pool which satisfied the size requirement */
-            bool isfound(false);
-            int _poolMappingindicator = 0;                  //points out the index in _poolSizeMapping
-            for(int _poolMappingindicator = 0 ; _poolMappingindicator < this->_poolSizePos ; ++_poolMappingindicator){
-                if(_size <= this->_poolSizeArray[_poolMappingindicator]){
-                        isfound = true;
-                        break;
-                }
-            }
+            int _poolMappingindicator = this->findMappingIndex(_size);
 
-            if(isfound){
+            if(_poolMappingindicator){
                     return this->_poolSizeMapping[_poolMappingindicator].allocMem(_size);
             }
             else{

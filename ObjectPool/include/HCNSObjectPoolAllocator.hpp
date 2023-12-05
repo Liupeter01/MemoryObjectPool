@@ -30,17 +30,17 @@ struct NodeDescriptor
 };
 #pragma pack(pop)
 
-template<typename _Tp>
+template<typename _Tp,std::size_t _objectAmount>
 class HCNSObjectPoolAllocator
 {
 public:
-		  HCNSObjectPoolAllocator(std::size_t _objectAmount);
+		  HCNSObjectPoolAllocator();
 		  virtual ~HCNSObjectPoolAllocator();
 		  _Tp* allocObjectMemory(size_t _size);
 		  void deallocObjectMemory(_Tp* _ptr);
 
 private:
-		  void initObjectPool(std::size_t _objectAmount);
+		  void initObjectPool();
 		  NodeDescriptor* getUnAmbigousHeaderValue();
 
 private:
@@ -49,7 +49,6 @@ private:
 
 		  uint32_t _blockTotalSize = sizeof(NodeDescriptor) + sizeof(_Tp); 	//The total size of sizeof(NodeDescriptor) + sizeof(_Tp)
           uint32_t _objectpoolTotalSize = 0;
-		  uint32_t _objectAmount = 0;
 
 		  NodeDescriptor* 	m_pHead;						//the head of the node
 		  void* 			m_pBuffer;			  			//the head of memory
@@ -57,16 +56,14 @@ private:
 		  std::mutex 		m_mutex;						//the mutex
 };
 
-template<typename _Tp>
-HCNSObjectPoolAllocator<_Tp>::HCNSObjectPoolAllocator(std::size_t _objectAmount)
+template<typename _Tp,std::size_t _objectAmount>
+HCNSObjectPoolAllocator<_Tp,_objectAmount>::HCNSObjectPoolAllocator()
 {
-	this->_objectAmount = _objectAmount;
-	this->_objectpoolTotalSize = this->_objectAmount * this->_blockTotalSize;
-	this->initObjectPool(_objectAmount);
+	this->initObjectPool();
 }
 
-template<typename _Tp>
-HCNSObjectPoolAllocator<_Tp>::~HCNSObjectPoolAllocator()
+template<typename _Tp,std::size_t _objectAmount>
+HCNSObjectPoolAllocator<_Tp,_objectAmount>::~HCNSObjectPoolAllocator()
 {
 		  ::delete[]this->m_pBuffer;
 }
@@ -78,11 +75,13 @@ HCNSObjectPoolAllocator<_Tp>::~HCNSObjectPoolAllocator()
 * @function:  void initObjectPool(std::size_t _objectAmount)
 * @param: [IN] std::size_t _objectAmount
 *------------------------------------------------------------------------------------------------------*/
-template<typename _Tp>
-void HCNSObjectPoolAllocator<_Tp>::initObjectPool(std::size_t _objectAmount)
+template<typename _Tp,std::size_t _objectAmount>
+void HCNSObjectPoolAllocator<_Tp,_objectAmount>::initObjectPool()
 {
+	this->_objectpoolTotalSize = _objectAmount * this->_blockTotalSize;
+
 	//calculate and allocate memory size by using memory pool
-	this->m_pBuffer = ::new char[_objectAmount * this->_blockTotalSize];
+	this->m_pBuffer = ::new char[this->_objectpoolTotalSize];
 
 	//do the data type cast
 	this->m_pHead = reinterpret_cast<NodeDescriptor*>(this->m_pBuffer);
@@ -129,15 +128,15 @@ void HCNSObjectPoolAllocator<_Tp>::initObjectPool(std::size_t _objectAmount)
 * @param: [IN] size_t _size
 * @retvalue: _Tp*
 *------------------------------------------------------------------------------------------------------*/
-template<typename _Tp>
-_Tp* HCNSObjectPoolAllocator<_Tp>::allocObjectMemory(size_t _size)
+template<typename _Tp,std::size_t _objectAmount>
+_Tp* HCNSObjectPoolAllocator<_Tp,_objectAmount>::allocObjectMemory(size_t _size)
 {
 		  NodeDescriptor* pAllocMem(nullptr);
 		  /*
 		  * if pool hasn't been inited and allocated with memory
 		  */
 		  if (!this->m_initStatus || this->m_pBuffer== nullptr) {
-					this->initObjectPool(100);
+					this->initObjectPool();
 		  }
 
 		  /*
@@ -178,8 +177,8 @@ _Tp* HCNSObjectPoolAllocator<_Tp>::allocObjectMemory(size_t _size)
 * @function:  void deallocObjectMemory( _Tp* _ptr)
 * @param:[IN]  _Tp* _ptr
 *------------------------------------------------------------------------------------------------------*/
-template<typename _Tp>
-void HCNSObjectPoolAllocator<_Tp>::deallocObjectMemory(_Tp* _ptr)
+template<typename _Tp,std::size_t _objectAmount>
+void HCNSObjectPoolAllocator<_Tp,_objectAmount>::deallocObjectMemory(_Tp* _ptr)
 {
 		  /*calculate pointer offset*/
 		  NodeDescriptor* _pMemInfo = reinterpret_cast<NodeDescriptor*>(
@@ -200,7 +199,7 @@ void HCNSObjectPoolAllocator<_Tp>::deallocObjectMemory(_Tp* _ptr)
 					this->m_pHead = _pMemInfo;
 		  }
 		  else { /*outside memory pool*/
-					delete[]_pMemInfo;
+					::delete[]_pMemInfo;
 		  }
 }
 
@@ -208,8 +207,8 @@ void HCNSObjectPoolAllocator<_Tp>::deallocObjectMemory(_Tp* _ptr)
 * get unambigous m_pHead value (meanwhile, mutex lock should be activated )
 * @function:  NodeDescriptor* getUnAmbigousHeaderValue()
 *------------------------------------------------------------------------------------------------------*/
-template<typename _Tp>
-NodeDescriptor* HCNSObjectPoolAllocator<_Tp>::getUnAmbigousHeaderValue()
+template<typename _Tp,std::size_t _objectAmount>
+NodeDescriptor* HCNSObjectPoolAllocator<_Tp,_objectAmount>::getUnAmbigousHeaderValue()
 {
 	std::lock_guard<std::mutex> _lckg(this->m_mutex);
 	return this->m_pHead;

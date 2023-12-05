@@ -1,6 +1,6 @@
 #include<HCNSObjectPool.hpp>
 
-class Example_ClassA:public HCNSObjectPool<Example_ClassA>
+class Example_ClassA:public HCNSObjectPool<Example_ClassA,10>
 {
 public:
     Example_ClassA(int _a,double _b,std::string _c)        
@@ -20,5 +20,6 @@ int main()
     Example_ClassA *p(
         Example_ClassA::createObject(100,98.98,std::string("hello world"))
     );
+    Example_ClassA::deleteObject(p);
     return 0;
 }

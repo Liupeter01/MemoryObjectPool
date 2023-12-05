@@ -41,6 +41,8 @@ private:
          template<typename Value, typename ...MemorySpaceArgs>
          void createMemoryManageObject(uint32_t blocks_count, Value t, MemorySpaceArgs ... args);
         
+         inline int findMappingIndex(const size_t _size);
+
 public:
           template<typename ...MemorySpaceArgs>
           static MemoryAllocator& getInstance(uint32_t blocks_count,MemorySpaceArgs ... args);
@@ -73,16 +75,18 @@ MemoryAllocator::MemoryAllocator(uint32_t blocks_count,MemorySpaceArgs ...args)
 template<typename Value, typename ...MemorySpaceArgs>
 void MemoryAllocator::createMemoryManageObject(uint32_t blocks_count, Value t,MemorySpaceArgs ... args) 
 {
-   //this->_poolSizeMapping.push_back(MemoryPool(t, blocks_count));
-   this->_poolSizeArray[this->_poolSizePos] = static_cast<uint32_t>(t);
-   this->_poolSizeMapping[this->_poolSizePos].setAllocateSize(static_cast<uint32_t>(t));
-   this->_poolSizeMapping[this->_poolSizePos++].setBlocksCount(static_cast<uint32_t>(blocks_count));
+   /*this->_poolSizePos should never larger than bound!!!*/
+   if(this->_poolSizePos != POOL_MAXINUM_SIZE){
+        this->_poolSizeArray[this->_poolSizePos] = static_cast<uint32_t>(t);
+        this->_poolSizeMapping[this->_poolSizePos].setAllocateSize(static_cast<uint32_t>(t));
+        this->_poolSizeMapping[this->_poolSizePos++].setBlocksCount(static_cast<uint32_t>(blocks_count));
 
-   /*find the max memory block size*/
-   if(this->retrieveMaxMemorySize <= static_cast<uint32_t>(t)){            
-         this->retrieveMaxMemorySize = static_cast<uint32_t>(t);
+        /*find the max memory block size*/
+        if(this->retrieveMaxMemorySize <= static_cast<uint32_t>(t)){            
+                this->retrieveMaxMemorySize = static_cast<uint32_t>(t);
+        }
+        this->createMemoryManageObject(blocks_count,args...);
    }
-    this->createMemoryManageObject(blocks_count,args...);
 }
 
 /*------------------------------------------------------------------------------------------------------
