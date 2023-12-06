@@ -12,10 +12,6 @@ void operator delete(void* _ptr);
 void* operator new[](size_t _size);
 void operator delete[](void* _ptr);
 
-#if _WIN32
-#pragma comment(lib,"HCNSMemoryPool.lib")
-#endif
-
 /*------------------------------------------------------------------------------------------------------
 * HCNSNodeDescriptor
 * 4B memory alignment
