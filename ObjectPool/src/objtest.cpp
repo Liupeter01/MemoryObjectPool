@@ -17,7 +17,6 @@ private:
 int main()
 {
     //C *p(HCNSObjectPool<C,10>::createObject(10,100,98.98,std::string("hello world")));
-    std::shared_ptr<Example_ClassA> ptr(new Example_ClassA(100,98.98,std::string("hello world")));
-    
+    std::unique_ptr<Example_ClassA> ptr(new Example_ClassA(100,98.98,std::string("hello world")));
     return 0;
 }

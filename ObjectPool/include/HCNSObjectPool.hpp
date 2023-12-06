@@ -8,6 +8,11 @@ template<typename _Tp,std::size_t _objectAmount>
 class HCNSObjectPool
 {
 public:
+	typedef HCNSObjectPoolAllocator<_Tp,_objectAmount>  pool_allocator;
+	typedef pool_allocator & allocator_ref;
+	typedef _Tp value_type;
+	typedef value_type* pointer;
+public:
 	void* operator new(size_t _size);
 	void operator delete(void* _ptr);
 	void* operator new[](size_t _size);
@@ -25,7 +30,7 @@ protected:
 	HCNSObjectPool&operator=(const HCNSObjectPool&) = delete;
 
 private:
-	static HCNSObjectPoolAllocator<_Tp,_objectAmount> &getInstance();
+	static allocator_ref getInstance();
 };
 
 template<typename _Tp,std::size_t _objectAmount>
@@ -59,7 +64,8 @@ void HCNSObjectPool<_Tp,_objectAmount>::operator delete[](void* _ptr)
 *------------------------------------------------------------------------------------------------------*/
 template<typename _Tp,std::size_t _objectAmount>
 template<typename ...Args>
-_Tp* HCNSObjectPool<_Tp,_objectAmount>::createObject(Args &&... args) 
+typename HCNSObjectPool<_Tp,_objectAmount>::pointer
+HCNSObjectPool<_Tp,_objectAmount>::createObject(Args &&... args) 
 {
 		  _Tp* obj(new _Tp(args...));
 		  return obj;
@@ -81,9 +87,10 @@ void HCNSObjectPool<_Tp,_objectAmount>::deleteObject(_Tp* obj)
 * @function:  static HCNSObjectPoolAllocator<_Tp> &getInstance()
 *------------------------------------------------------------------------------------------------------*/
 template<typename _Tp,std::size_t _objectAmount>
-HCNSObjectPoolAllocator<_Tp,_objectAmount> & HCNSObjectPool<_Tp,_objectAmount>::getInstance()
+typename HCNSObjectPool<_Tp,_objectAmount>::allocator_ref
+HCNSObjectPool<_Tp,_objectAmount>::getInstance()
 {
-	static HCNSObjectPoolAllocator<_Tp,_objectAmount> alloc_obj;
+	static pool_allocator alloc_obj;
 	return alloc_obj;
 }
 
